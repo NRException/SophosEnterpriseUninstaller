@@ -10,3 +10,5 @@ I'd recommend that this script is deployed alongside sophos's cloud deployment p
 As sophos don't really provide an official script to actually uninstall their old enterprise package, I have created one! It's good practice to run this alongside their cloud installer MSI if you're migrating to their cloud solution
 
 Please test this before deploying to your estate, this script should be run at your own risk!
+
+You should definitely run this script as a local admin to the machine that you intend to run this on, as it does need to uninstall all of the sophos enterprise features, you'll also need to make sure tamper protection is turned off!
