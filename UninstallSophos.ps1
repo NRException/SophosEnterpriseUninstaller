@@ -3,7 +3,7 @@ Param (
 
 )
 
-#region Definitions
+#region Funcs / Definitions
 function Invoke-UninstallAncillaryService([string]$IdentifyingNumber) {
 
     Start-Process msiexec.exe -Wait -ArgumentList ('/X ' + $IdentifyingNumber + ' /qn REBOOT=ReallySuppress')
@@ -50,7 +50,7 @@ $PriorityTable = $PriorityTable | % { New-Object object | Add-Member -NoteProper
 
 Write-Verbose "Uninstall chain (execution may be halted until chain is complete):"
 foreach ($UninstObject in $PriorityTable){
-    Write-Host "Uninstalling" $UninstObject.Name "(" $UninstObject.Guid ") Priority:" $UninstObject.Priority
+    Write-Verbos "Uninstalling" $UninstObject.Name "(" $UninstObject.Guid ") Priority:" $UninstObject.Priority
     Invoke-UninstallAncillaryService -IdentifyingNumber $UninstObject.Guid
 }
 
