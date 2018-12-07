@@ -1,3 +1,8 @@
+[CmdletBinding()]
+Param (
+
+)
+
 #region Definitions
 function Invoke-UninstallAncillaryService([string]$IdentifyingNumber) {
 
@@ -21,15 +26,15 @@ $SearchArray = @(
 $PriorityTable = @()
 #endregion
 
-write-host "Stopping SAUS..."
+Write-Verbose "Stopping SAUS..."
 Stop-Service -Name 'Sophos AutoUpdate Service'
 
-write-host "Getting all sophos packages (This may take a while)..."
+Write-Verbose "Getting all sophos packages (This may take a while)..."
 #Get all packages that contain sophos.
-$SophosPackages = Get-WmiObject Win32_Product | Where-Object {$_.Name -like "*sophos*"} | Select IdentifyingNumber, Name
+$SophosPackages = Get-WmiObject Win32_Product | Where-Object {$_.Name -like "*sophos*"}
 
 #Assign priority and order based on it. (Yes it's ugly, whatever...)
-write-host "Re-ordering packages...`n"
+Write-Verbose "Re-ordering packages...`n"
 foreach ($SPack in $SophosPackages){
     $SearchArray | % {
         if($_.Name -eq $SPack.Name) {
@@ -43,13 +48,23 @@ foreach ($SPack in $SophosPackages){
 }
 $PriorityTable = $PriorityTable | % { New-Object object | Add-Member -NotePropertyMembers $_ -PassThru } | Sort-Object {$_.Priority}
 
-Write-Host "Uninstall chain (execution may be halted until chain is complete):" -ForegroundColor Green
+Write-Verbose "Uninstall chain (execution may be halted until chain is complete):"
 foreach ($UninstObject in $PriorityTable){
     Write-Host "Uninstalling" $UninstObject.Name "(" $UninstObject.Guid ") Priority:" $UninstObject.Priority
     Invoke-UninstallAncillaryService -IdentifyingNumber $UninstObject.Guid
 }
 
-Write-Host "Process complete. Here is a list of potential left-over packages:" -ForegroundColor Green
-Get-WmiObject Win32_Product | Where-Object {$_.Name -like "*sophos*"} | Select IdentifyingNumber, Name
+Write-Verbose "Process complete. Returning..."
+$SophObj = Get-WmiObject Win32_Product | Where-Object {$_.Name -like "*sophos*"}
 
-Write-Host "Reboot in countdown now..."
+if($SophObj.Count > 0) {
+    Write-Output (New-Object PSObject -Property @{
+        LeftoverPrograms=@{}
+        Completed=$true
+    })
+} else {
+    Write-Output (New-Object PSObject -Property @{
+        LeftoverPrograms=$SophObj
+        Completed=$false
+    })
+}
