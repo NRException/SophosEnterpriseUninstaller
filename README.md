@@ -1,6 +1,6 @@
 # SophosEnterpriseUninstaller
 
-This project facilitates a powershell script which is deployable via SCCM / PDQ etc to uninstall both sophos enterprise on-premise and Sophos Cloud.
+This project facilitates a powershell script which is deployable via SCCM / PDQ etc to uninstall both sophos enterprise on-premise and Sophos Cloud. Sophos recommend that this is done in a certain order, so the uninstall process is weighted and sorted to favour certain installs that are found in a certain order. Sophos's documentation can be found here: https://community.sophos.com/kb/en-us/109668
 
 ## Getting Started
 
