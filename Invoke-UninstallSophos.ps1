@@ -35,9 +35,6 @@ Stop-Service -Name 'Sophos AutoUpdate Service' -ErrorAction SilentlyContinue
 Write-Verbose "`tSophos Anti-Virus"
 Stop-Service -Name 'Sophos Anti-Virus' -ErrorAction SilentlyContinue
 
-Write-Verbose "Stopping processes..."
-Get-Process | where {$_.Name -like "*Sophos*"} | Stop-Process -ErrorAction SilentlyContinue
-
 Write-Verbose "Getting all sophos packages (This may take a while)..."
 #Get all packages that contain sophos.
 $SophosPackages = Get-WmiObject Win32_Product | Where-Object {$_.Name -like "*sophos*"}
