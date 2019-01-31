@@ -64,6 +64,23 @@ This script will also hand-over return codes to the pipeline, these can be used 
 
 Create your package in your deployment system of choice and hand it the command line parameters above to suit your needs!
 
+If you're deploying via one of these deployment platforms, you will need to set the execution policy on the target machine, so remember to run these commands before and after execution respectively:
+
+Set execution policy to bypass
+```
+Set-ExecutionPolicy Bypass
+```
+
+Set execution policy to Restricted (Default)
+```
+Set-ExecutionPolicy Restricted
+```
+
+If running this from a package, which will run via cmd/run by default, youll need to add "powershell.exe" to the start of those commands, eg:
+```
+powershell.exe Set-ExecutionPolicy Bypass
+```
+
 ## Built With
 
 * [Microsoft Powershell](https://docs.microsoft.com/en-us/powershell/) - The main IDE and RTE used.
