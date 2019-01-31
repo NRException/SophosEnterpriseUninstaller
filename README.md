@@ -76,7 +76,7 @@ Set execution policy to Restricted (Default)
 Set-ExecutionPolicy Restricted
 ```
 
-If running this from a package, which will run via cmd/run by default, youll need to add "powershell.exe" to the start of those commands, eg:
+If running this from a package, which will run via cmd/run by default, you'll need to add "powershell.exe" to the start of those commands, eg:
 ```
 powershell.exe Set-ExecutionPolicy Bypass
 ```
