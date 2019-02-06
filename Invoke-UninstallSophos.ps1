@@ -72,6 +72,7 @@ foreach ($UninstObject in $PriorityTable) {
     [String]$outputString = "Invoking Uninstall {0} ({1}) With Priority of {2}" -f ($UninstObject.Name, $UninstObject.Guid, $UninstObject.Priority)
     Write-Verbose $outputString
     Write-Log $outputString
+    Write-Progress -Activity "Uninstalling Sophos Packages" -Status ($outputString) -PercentComplete ($UninstObject.Priority / $PriorityTable.Count * 100)
     Invoke-UninstallAncillaryService -IdentifyingNumber $UninstObject.Guid
 }
 
