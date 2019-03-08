@@ -5,7 +5,6 @@ Param (
 
 #region Funcs / Definitions
 function Invoke-UninstallAncillaryService([string]$IdentifyingNumber) {
-
     Start-Process msiexec.exe -Wait -ArgumentList ('/X ' + $IdentifyingNumber + ' /qn REBOOT=ReallySuppress')
 }
 function Write-Log([string]$logEntryString) {
@@ -13,8 +12,32 @@ function Write-Log([string]$logEntryString) {
         Add-Content -Path $logPath -Value $logEntryString
     }
 }
+function Write-VerboseRegKey {
+    Param (
+        [String]$Path,
+        [String]$Key,
+        [Int]$Value
+    )
+    Write-Verbose ("Write Key: {0} [{1}] --> {2}" -f $Path, $Key, $Value)
+    try {
+        Set-ItemProperty -Path $Path -Name $Key -Value $Value
+        Write-Verbose "`tOK"
+    } catch {
+        New-ItemProperty -Path $Path -Name $Key -Value $Value
+        Write-Verbose "`tOK (New Item)"
+    }
+}
 $logPath = "C:\Invoke-UninstallSophos.log"
 
+#Lets check to see if we have UAC elevation?
+if ((New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Verbose "Required elevation is good... Lets go!"
+  } else {
+    throw "Not elevated. Please run this as admin in powershell! Exiting..."
+    exit
+  }
+
+#Could do this a more efficient way, but this is PSv2 compatible.
 $SearchArray = @()
 $SearchArray += New-Object PSObject -Property @{Name = 'Sophos Patch Agent';Priority = 1}
 $SearchArray += New-Object PSObject -Property @{Name = 'Sophos Compliance Agent';Priority = 2}
@@ -34,6 +57,17 @@ Write-Verbose "`tSophos Auto Update Service"
 Stop-Service -Name 'Sophos AutoUpdate Service' -ErrorAction SilentlyContinue
 Write-Verbose "`tSophos Anti-Virus"
 Stop-Service -Name 'Sophos Anti-Virus' -ErrorAction SilentlyContinue
+Write-Verbose "`tSetting Sophos Anti-Virus startup type to disabled..."
+Set-Service "Sophos Anti-Virus" -StartupType Disabled
+
+#Recommended Sophos TP keys can be found here: https://community.sophos.com/kb/en-us/124377
+Write-Verbose "Flipping Registry Keys to disable SED Tamper protection..."
+Write-VerboseRegKey -Path "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Sophos Endpoint Defense\TamperProtection\Config" -Key "SavEnabled" -Value 0
+Write-VerboseRegKey -Path "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Sophos Endpoint Defense\TamperProtection\Config" -Key "SEDEnabled" -Value 0
+Write-VerboseRegKey -Path "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Sophos MCS Agent" -Key "Start" -Value 4
+Write-VerboseRegKey -Path "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Sophos\SavService\TamperProtection" -Key "Enabled" -Value 0
+Write-VerboseRegKey -Path "HKEY_LOCAL_MACHINE\SOFTWARE\Sophos\SAVService\TamperProtection" -Key "Enabled" -Value 0
+Write-VerboseRegKey -Path "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Sophos\SAVService\TamperProtection" -Key "Enabled" -Value 0
 
 Write-Verbose "Getting all sophos packages (This may take a while)..."
 #Get all packages that contain sophos.
@@ -43,7 +77,7 @@ $SophosPackages = Get-WmiObject Win32_Product | Where-Object {$_.Name -like "*so
 $PriorityTable = @()
 Write-Verbose "Re-ordering packages..."
 foreach ($SPack in $SophosPackages){
-    $SearchArray | % {
+    $SearchArray | ForEach-Object {
         if($_.Name -eq $SPack.Name) {
             $PriorityTable += New-Object PSObject -Property @{
                 Priority = $_.Priority
@@ -81,7 +115,7 @@ Write-Verbose "Uninstall chain complete!"
 $SophObj = Get-WmiObject Win32_Product | Where-Object {$_.Name -like "*sophos*"}
 
 #Aaaaand return!
-if($SophObj.Count > 0) {
+if($SophObj.Count -gt 0) {
     Write-Output (New-Object PSObject -Property @{
         LeftoverPrograms=@{}
         Completed=$true
@@ -90,7 +124,7 @@ if($SophObj.Count > 0) {
    return 1
 } else {
     Write-Output (New-Object PSObject -Property @{
-        LeftoverPrograms=$SophObj | select -ExpandProperty Name
+        LeftoverPrograms=$SophObj | Select-Object -ExpandProperty Name
         Completed=$false
     })
     Write-Log ("Script returning {0}" -f (10))
