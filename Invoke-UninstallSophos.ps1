@@ -1,11 +1,12 @@
 [CmdletBinding()]
 Param (
-
+    [Boolean]$Testing=$false
 )
 
-#region Funcs / Definitions
 function Invoke-UninstallAncillaryService([string]$IdentifyingNumber) {
-    Start-Process msiexec.exe -Wait -ArgumentList ('/X ' + $IdentifyingNumber + ' /qn REBOOT=ReallySuppress')
+    if($Testing -eq $false) {
+        Start-Process msiexec.exe -Wait -ArgumentList ('/X ' + $IdentifyingNumber + ' /qn REBOOT=ReallySuppress')
+    }
 }
 
 function Write-VerboseRegKey {
@@ -15,20 +16,23 @@ function Write-VerboseRegKey {
         [Int]$Value
     )
     Write-Verbose ("Write Key: {0} [{1}] --> {2}" -f $Path, $Key, $Value)
-    try {
-        Set-ItemProperty -Path $Path -Name $Key -Value $Value -ErrorAction SilentlyContinue
-        Write-Verbose "`tOK"
-    } catch [System.Management.Automation.ItemNotFoundException] {
-        New-ItemProperty -Path $Path -Name $Key -Value $Value -ErrorAction SilentlyContinue
-        Write-Verbose "`tOK (New Item)"
-    } catch {
-        Write-Verbose "`tFAIL (Total failure to change reg state)"
+    if($Testing -eq $false)
+    {
+        try {
+            Set-ItemProperty -Path $Path -Name $Key -Value $Value -ErrorAction SilentlyContinue
+            Write-Verbose "`tOK"
+        } catch [System.Management.Automation.ItemNotFoundException] {
+            New-ItemProperty -Path $Path -Name $Key -Value $Value -ErrorAction SilentlyContinue
+            Write-Verbose "`tOK (New Item)"
+        } catch {
+            Write-Verbose "`tFAIL (Total failure to change reg state)"
+        }
     }
 }
 
 $logPath = "C:\Invoke-UninstallSophos.log"
 
-#Lets check to see if we have UAC elevation?
+#Lets check to see if we have administrator rights
 if ((New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Verbose "Required elevation is good... Lets go!"
   } else {
@@ -51,15 +55,16 @@ $SearchArray += New-Object PSObject -Property @{Name = 'Sophos Remote Management
 $SearchArray += New-Object PSObject -Property @{Name = 'Sophos Management Communication System';Priority = 9}
 $SearchArray += New-Object PSObject -Property @{Name = 'Sophos AutoUpdate';Priority = 10}
 $SearchArray += New-Object PSObject -Property @{Name = 'Sophos Endpoint Defense';Priority = 11}
-#endregion
 
-Write-Verbose "Stopping services..."
-Write-Verbose "`tSophos Auto Update Service"
-Stop-Service -Name 'Sophos AutoUpdate Service' -ErrorAction SilentlyContinue
-Write-Verbose "`tSophos Anti-Virus"
-Stop-Service -Name 'Sophos Anti-Virus' -ErrorAction SilentlyContinue
-Write-Verbose "`tSetting Sophos Anti-Virus startup type to disabled..."
-Set-Service "Sophos Anti-Virus" -StartupType Disabled
+if($Testing -eq $false) {
+    Write-Verbose "Stopping services..."
+    Write-Verbose "`tSophos Auto Update Service"
+    Stop-Service -Name 'Sophos AutoUpdate Service' -ErrorAction SilentlyContinue
+    Write-Verbose "`tSophos Anti-Virus"
+    Stop-Service -Name 'Sophos Anti-Virus' -ErrorAction SilentlyContinue
+    Write-Verbose "`tSetting Sophos Anti-Virus startup type to disabled..."
+    Set-Service "Sophos Anti-Virus" -StartupType Disabled
+}
 
 #Recommended Sophos TP keys can be found here: https://community.sophos.com/kb/en-us/124377
 Write-Verbose "Flipping Registry Keys to disable SED Tamper protection..."
@@ -76,7 +81,7 @@ $SophosPackages = Get-WmiObject Win32_Product | Where-Object {$_.Name -like "*so
 
 #Assign priority and order based on it. (Yes it's ugly and produces duplicates but whatever...)
 $PriorityTable = @()
-Write-Verbose "Re-ordering packages..."
+Write-Verbose "Sorting packages..."
 foreach ($SPack in $SophosPackages){
     $SearchArray | ForEach-Object {
         if($_.Name -eq $SPack.Name) {
@@ -88,10 +93,13 @@ foreach ($SPack in $SophosPackages){
         else
         {
             #If we cant find it in our search array, just assign it a lower priority.
+            #This should stop duplicates... MAYBE? :)
+            if($null -eq ($PriorityTable | Where-Object {$_.Guid -eq $SPack.IdentifyingNumber})) {
             $PriorityTable += New-Object PSObject -Property @{
                 Priority = ($PriorityTable.Count + 1)
                 Name = $SPack.Name
                 Guid = $SPack.IdentifyingNumber
+            }
             }
         }
     }
@@ -120,17 +128,14 @@ if($SophObj.Count -gt 0) {
         Completed=$true
     })
     Stop-Transcript
-
-    Set-ExecutionPolicy -ExecutionPolicy LocalMachine
-   return 1
+    Set-ExecutionPolicy -ExecutionPolicy Default
+    return 1
 } else {
     Write-Output (New-Object PSObject -Property @{
         LeftoverPrograms=$SophObj | Select-Object -ExpandProperty Name
         Completed=$false
     })
     Stop-Transcript
-
-    Set-ExecutionPolicy -ExecutionPolicy LocalMachine
+    Set-ExecutionPolicy -ExecutionPolicy Default
     return 10
 }
-
