@@ -1,17 +1,13 @@
 [CmdletBinding()]
 Param (
-    [Boolean]$ProvideLoggingFile
+
 )
 
 #region Funcs / Definitions
 function Invoke-UninstallAncillaryService([string]$IdentifyingNumber) {
     Start-Process msiexec.exe -Wait -ArgumentList ('/X ' + $IdentifyingNumber + ' /qn REBOOT=ReallySuppress')
 }
-function Write-Log([string]$logEntryString) {
-    if($ProvideLoggingFile=$TRUE) {
-        Add-Content -Path $logPath -Value $logEntryString
-    }
-}
+
 function Write-VerboseRegKey {
     Param (
         [String]$Path,
@@ -20,13 +16,16 @@ function Write-VerboseRegKey {
     )
     Write-Verbose ("Write Key: {0} [{1}] --> {2}" -f $Path, $Key, $Value)
     try {
-        Set-ItemProperty -Path $Path -Name $Key -Value $Value
+        Set-ItemProperty -Path $Path -Name $Key -Value $Value -ErrorAction SilentlyContinue
         Write-Verbose "`tOK"
-    } catch {
-        New-ItemProperty -Path $Path -Name $Key -Value $Value
+    } catch [System.Management.Automation.ItemNotFoundException] {
+        New-ItemProperty -Path $Path -Name $Key -Value $Value -ErrorAction SilentlyContinue
         Write-Verbose "`tOK (New Item)"
+    } catch {
+        Write-Verbose "`tFAIL (Total failure to change reg state)"
     }
 }
+
 $logPath = "C:\Invoke-UninstallSophos.log"
 
 #Lets check to see if we have UAC elevation?
@@ -35,7 +34,9 @@ if ((New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsI
   } else {
     throw "Not elevated. Please run this as admin in powershell! Exiting..."
     exit
-  }
+}
+
+Start-Transcript -Path $logPath
 
 #Could do this a more efficient way, but this is PSv2 compatible.
 $SearchArray = @()
@@ -62,18 +63,18 @@ Set-Service "Sophos Anti-Virus" -StartupType Disabled
 
 #Recommended Sophos TP keys can be found here: https://community.sophos.com/kb/en-us/124377
 Write-Verbose "Flipping Registry Keys to disable SED Tamper protection..."
-Write-VerboseRegKey -Path "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Sophos Endpoint Defense\TamperProtection\Config" -Key "SavEnabled" -Value 0
-Write-VerboseRegKey -Path "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Sophos Endpoint Defense\TamperProtection\Config" -Key "SEDEnabled" -Value 0
-Write-VerboseRegKey -Path "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Sophos MCS Agent" -Key "Start" -Value 4
-Write-VerboseRegKey -Path "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Sophos\SavService\TamperProtection" -Key "Enabled" -Value 0
-Write-VerboseRegKey -Path "HKEY_LOCAL_MACHINE\SOFTWARE\Sophos\SAVService\TamperProtection" -Key "Enabled" -Value 0
-Write-VerboseRegKey -Path "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Sophos\SAVService\TamperProtection" -Key "Enabled" -Value 0
+Write-VerboseRegKey -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Sophos Endpoint Defense\TamperProtection\Config" -Key "SavEnabled" -Value 0 
+Write-VerboseRegKey -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Sophos Endpoint Defense\TamperProtection\Config" -Key "SEDEnabled" -Value 0
+Write-VerboseRegKey -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Sophos MCS Agent" -Key "Start" -Value 4
+Write-VerboseRegKey -Path "HKLM:\SOFTWARE\WOW6432Node\Sophos\SavService\TamperProtection" -Key "Enabled" -Value 0
+Write-VerboseRegKey -Path "HKLM:\SOFTWARE\Sophos\SAVService\TamperProtection" -Key "Enabled" -Value 0
+Write-VerboseRegKey -Path "HKLM:\SOFTWARE\WOW6432Node\Sophos\SAVService\TamperProtection" -Key "Enabled" -Value 0
 
 Write-Verbose "Getting all sophos packages (This may take a while)..."
 #Get all packages that contain sophos.
 $SophosPackages = Get-WmiObject Win32_Product | Where-Object {$_.Name -like "*sophos*"}
 
-#Assign priority and order based on it. (Yes it's ugly, whatever...)
+#Assign priority and order based on it. (Yes it's ugly and produces duplicates but whatever...)
 $PriorityTable = @()
 Write-Verbose "Re-ordering packages..."
 foreach ($SPack in $SophosPackages){
@@ -101,11 +102,9 @@ Write-Verbose ([String]"All packages totalled, TOTAL PACKAGES: {0}" -f ($Priorit
 
 #Verbose logging of uninstall chain.
 Write-Verbose "Uninstall chain... Execution may be halted until chain is complete."
-Write-Log "Uninstall chain... Execution may be halted until chain is complete."
 foreach ($UninstObject in $PriorityTable) {
     [String]$outputString = "Invoking Uninstall {0} ({1}) With Priority of {2}" -f ($UninstObject.Name, $UninstObject.Guid, $UninstObject.Priority)
     Write-Verbose $outputString
-    Write-Log $outputString
     Write-Progress -Activity "Uninstalling Sophos Packages" -Status ($outputString) -PercentComplete ($UninstObject.Priority / $PriorityTable.Count * 100)
     Invoke-UninstallAncillaryService -IdentifyingNumber $UninstObject.Guid
 }
@@ -120,13 +119,18 @@ if($SophObj.Count -gt 0) {
         LeftoverPrograms=@{}
         Completed=$true
     })
-   Write-Log ("Script returning {0}" -f (1))
+    Stop-Transcript
+
+    Set-ExecutionPolicy -ExecutionPolicy LocalMachine
    return 1
 } else {
     Write-Output (New-Object PSObject -Property @{
         LeftoverPrograms=$SophObj | Select-Object -ExpandProperty Name
         Completed=$false
     })
-    Write-Log ("Script returning {0}" -f (10))
+    Stop-Transcript
+
+    Set-ExecutionPolicy -ExecutionPolicy LocalMachine
     return 10
 }
+
